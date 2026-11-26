@@ -1,0 +1,810 @@
+{
+  "entities": {
+    "PurchaseOrder": {
+      "title": "PurchaseOrder",
+      "description": "Official Purchase Order document issued by PT. KREATIF KEBANGGAAN BANGSA stored in po_kkb.",
+      "type": "object",
+      "properties": {
+        "poNumber": {
+          "type": "string",
+          "description": "Purchase Order number (e.g., 005/PO-KKB/2026).",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "poDate": {
+          "type": "string",
+          "description": "Date of the Purchase Order in YYYY-MM-DD format.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "vendorName": {
+          "type": "string",
+          "description": "Full name of the vendor or recipient.",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "vendorAddress": {
+          "type": "string",
+          "description": "Mailing or business address of the vendor.",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "projectName": {
+          "type": "string",
+          "description": "Associated project name.",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "projectNumber": {
+          "type": "string",
+          "description": "Associated project code or number.",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "deliveryDate": {
+          "type": "string",
+          "description": "Expected delivery date in YYYY-MM-DD format.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "items": {
+          "type": "array",
+          "description": "Bounded list (1 to 20) of Purchase Order line items containing description, quantity, unitPrice, and amount."
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "Sum of all line item amounts in IDR."
+        },
+        "status": {
+          "type": "string",
+          "description": "Lifecycle status of the Purchase Order.",
+          "enum": ["Draft", "Sent", "Invoiced", "Paid"]
+        },
+        "invoiceDate": {
+          "type": "string",
+          "description": "Optional invoice date in YYYY-MM-DD format or empty string.",
+          "maxLength": 10
+        },
+        "invoiceNumber": {
+          "type": "string",
+          "description": "Optional invoice reference number.",
+          "maxLength": 64
+        },
+        "invoiceFileUrl": {
+          "type": "string",
+          "description": "Optional external link to vendor invoice file.",
+          "maxLength": 1000
+        },
+        "invoiceFileName": {
+          "type": "string",
+          "description": "Optional filename of attached vendor invoice.",
+          "maxLength": 200
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional note entered on the Purchase Order form.",
+          "maxLength": 1000
+        },
+        "paymentTermsMode": {
+          "type": "string",
+          "description": "Payment terms mode: NET (30/45/60/90 auto due date) or MANUAL (custom manual due date).",
+          "enum": ["NET", "MANUAL"]
+        },
+        "paymentTermsDays": {
+          "type": "number",
+          "description": "Optional payment terms duration in days (30, 45, 60, 90) assigned when invoice is entered in NET mode."
+        },
+        "manualDueDateNote": {
+          "type": "string",
+          "description": "Optional note explaining manual due date arrangement.",
+          "maxLength": 200
+        },
+        "dueDate": {
+          "type": "string",
+          "description": "Calculated or manually entered due date in YYYY-MM-DD format or empty string.",
+          "maxLength": 10
+        },
+        "revisionSubStatus": {
+          "type": "string",
+          "description": "Sub-status indicating post-revision state.",
+          "enum": ["", "Revisi", "Menunggu Pembayaran Ulang", "Menunggu Konfirmasi"]
+        },
+        "previousPaidAmount": {
+          "type": "number",
+          "description": "Previously paid amount in IDR when a Paid PO undergoes revision."
+        },
+        "revisions": {
+          "type": "array",
+          "description": "Immutable append-only list (0 to 50) of revision history entries."
+        },
+        "voidedInvoices": {
+          "type": "array",
+          "description": "Immutable append-only list (0 to 50) of voided vendor invoice snapshots archived during revisions."
+        },
+        "isDeleted": {
+          "type": "boolean",
+          "description": "True if PO was soft-deleted and archived in Riwayat Hapus."
+        },
+        "deletedAt": {
+          "type": "string",
+          "description": "Display timestamp when PO was soft-deleted.",
+          "maxLength": 40
+        },
+        "deletedByName": {
+          "type": "string",
+          "description": "Name and role of user who soft-deleted the PO.",
+          "maxLength": 160
+        },
+        "deletedByEmail": {
+          "type": "string",
+          "description": "Email of user who soft-deleted the PO.",
+          "maxLength": 180
+        },
+        "deleteReason": {
+          "type": "string",
+          "description": "Optional reason provided when soft-deleting the PO.",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated last update timestamp."
+        }
+      },
+      "required": [
+        "poNumber",
+        "poDate",
+        "vendorName",
+        "vendorAddress",
+        "projectName",
+        "projectNumber",
+        "deliveryDate",
+        "items",
+        "totalAmount",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ClientInvoice": {
+      "title": "ClientInvoice",
+      "description": "Outgoing client invoice (Cash In) issued by PT. KREATIF KEBANGGAAN BANGSA stored in client_invoices_kkb.",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": {
+          "type": "string",
+          "description": "Client invoice number (e.g., INV-CLI-001).",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "invoiceDate": {
+          "type": "string",
+          "description": "Date of client invoice in YYYY-MM-DD format.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "clientName": {
+          "type": "string",
+          "description": "Client company or entity name (Billed to).",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "brandName": {
+          "type": "string",
+          "description": "Optional client brand name.",
+          "maxLength": 200
+        },
+        "billingAddress": {
+          "type": "string",
+          "description": "Optional billing address of the client.",
+          "maxLength": 500
+        },
+        "poNumber": {
+          "type": "string",
+          "description": "Optional client Purchase Order reference number.",
+          "maxLength": 64
+        },
+        "grnNumber": {
+          "type": "string",
+          "description": "Optional GRN date or reference text.",
+          "maxLength": 64
+        },
+        "showGRN": {
+          "type": "boolean",
+          "description": "Whether the GRN row should be shown on the printed invoice."
+        },
+        "includePPN": {
+          "type": "boolean",
+          "description": "Whether 11% PPN (VAT) is applied to this invoice."
+        },
+        "subtotalAmount": {
+          "type": "number",
+          "description": "Sum of line item amounts before PPN in IDR."
+        },
+        "ppnAmount": {
+          "type": "number",
+          "description": "Calculated 11% PPN amount in IDR."
+        },
+        "showSystemGeneratedNote": {
+          "type": "boolean",
+          "description": "Whether to show system generated note below signatory."
+        },
+        "projectName": {
+          "type": "string",
+          "description": "Project name billed to client.",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "projectNumber": {
+          "type": "string",
+          "description": "Project code or number.",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "items": {
+          "type": "array",
+          "description": "Bounded list (1 to 20) of billed line items."
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "Total client invoice amount in IDR."
+        },
+        "sentDate": {
+          "type": "string",
+          "description": "Date the invoice was sent to client in YYYY-MM-DD format or empty string.",
+          "maxLength": 10
+        },
+        "paymentTermsMode": {
+          "type": "string",
+          "description": "Payment terms mode: NET or MANUAL (Custom).",
+          "enum": ["NET", "MANUAL"]
+        },
+        "paymentTermsDays": {
+          "type": "number",
+          "description": "Optional payment terms days when mode is NET."
+        },
+        "manualDueDateNote": {
+          "type": "string",
+          "description": "Optional note for manual due date.",
+          "maxLength": 200
+        },
+        "dueDate": {
+          "type": "string",
+          "description": "Due date in YYYY-MM-DD format or empty string.",
+          "maxLength": 10
+        },
+        "status": {
+          "type": "string",
+          "description": "Lifecycle and payment status of client invoice.",
+          "enum": ["Draft", "Unpaid", "Paid"]
+        },
+        "paidDate": {
+          "type": "string",
+          "description": "Actual date paid by client in YYYY-MM-DD format or empty string.",
+          "maxLength": 10
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional internal note.",
+          "maxLength": 1000
+        },
+        "isVoided": {
+          "type": "boolean",
+          "description": "True if this invoice was replaced by a revision invoice and archived as VOID."
+        },
+        "voidStatusLabel": {
+          "type": "string",
+          "description": "Status banner for voided invoices.",
+          "maxLength": 160
+        },
+        "replacedByInvoiceId": {
+          "type": "string",
+          "description": "Document ID of the replacement revision invoice.",
+          "maxLength": 128
+        },
+        "replacedByInvoiceNumber": {
+          "type": "string",
+          "description": "Invoice number of the replacement revision invoice.",
+          "maxLength": 64
+        },
+        "revisionSubStatus": {
+          "type": "string",
+          "description": "Sub-status indicating post-revision state.",
+          "enum": ["", "Revisi", "Menunggu Pembayaran Ulang", "Menunggu Konfirmasi"]
+        },
+        "previousPaidAmount": {
+          "type": "number",
+          "description": "Previously paid amount in IDR when a Paid invoice undergoes revision."
+        },
+        "revisions": {
+          "type": "array",
+          "description": "Immutable append-only list (0 to 50) of revision history entries."
+        },
+        "isDeleted": {
+          "type": "boolean",
+          "description": "True if Client Invoice was soft-deleted and archived in Riwayat Hapus."
+        },
+        "deletedAt": {
+          "type": "string",
+          "description": "Display timestamp when Client Invoice was soft-deleted.",
+          "maxLength": 40
+        },
+        "deletedByName": {
+          "type": "string",
+          "description": "Name and role of user who soft-deleted the invoice.",
+          "maxLength": 160
+        },
+        "deletedByEmail": {
+          "type": "string",
+          "description": "Email of user who soft-deleted the invoice.",
+          "maxLength": 180
+        },
+        "deleteReason": {
+          "type": "string",
+          "description": "Optional reason provided when soft-deleting the invoice.",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated last update timestamp."
+        }
+      },
+      "required": [
+        "invoiceNumber",
+        "invoiceDate",
+        "clientName",
+        "projectName",
+        "projectNumber",
+        "items",
+        "totalAmount",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CashflowSettings": {
+      "title": "CashflowSettings",
+      "description": "Cashflow projection configuration such as initial bank balance stored in cashflow_settings_kkb.",
+      "type": "object",
+      "properties": {
+        "openingBankBalance": {
+          "type": "number",
+          "description": "Initial bank balance in IDR used as starting balance in cashflow projection."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated last update timestamp."
+        }
+      },
+      "required": ["openingBankBalance", "updatedAt"]
+    },
+    "BossReportMonth": {
+      "title": "BossReportMonth",
+      "description": "Monthly Excel-style Boss Report ledger stored in boss_report_months_kkb.",
+      "type": "object",
+      "properties": {
+        "monthKey": {
+          "type": "string",
+          "description": "Month identifier in YYYY-MM format.",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^\\d{4}-\\d{2}$"
+        },
+        "asOfDate": {
+          "type": "string",
+          "description": "Bank balance snapshot date in YYYY-MM-DD format.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "accounts": {
+          "type": "array",
+          "description": "Bounded list (0 to 50) of bank account rows."
+        },
+        "manualOpeningBalance": {
+          "type": "number",
+          "description": "Optional manual opening balance (Saldo Awal) override in IDR for this month."
+        },
+        "cashInManual": {
+          "type": "array",
+          "description": "Bounded list (0 to 100) of manual Cash In rows."
+        },
+        "operasional": {
+          "type": "array",
+          "description": "Bounded list (0 to 100) of Operasional Cash Out rows."
+        },
+        "investment": {
+          "type": "array",
+          "description": "Bounded list (0 to 100) of Investment Cash Out rows."
+        },
+        "projectCostManual": {
+          "type": "array",
+          "description": "Bounded list (0 to 100) of manual Project Cost rows."
+        },
+        "autoOverrides": {
+          "type": "array",
+          "description": "Bounded list (0 to 150) of per-month overrides for automatic rows."
+        },
+        "rescheduledIn": {
+          "type": "array",
+          "description": "Bounded list (0 to 150) of items rescheduled into this month from previous months."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated last update timestamp."
+        }
+      },
+      "required": [
+        "monthKey",
+        "asOfDate",
+        "accounts",
+        "cashInManual",
+        "operasional",
+        "investment",
+        "projectCostManual",
+        "autoOverrides",
+        "updatedAt"
+      ]
+    },
+    "AppRole": {
+      "title": "AppRole",
+      "description": "Configurable RBAC role and granular permission flags stored in roles_kkb.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Role slug ID (e.g. super_admin, admin_finance, staff_inputer, viewer).",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the role.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "description": "Short summary of role scope.",
+          "maxLength": 250
+        },
+        "isSystemDefault": {
+          "type": "boolean",
+          "description": "Whether this role is one of the 4 seeded default roles."
+        },
+        "permissions": {
+          "type": "object",
+          "description": "Map of 11 boolean permission flags."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated last update timestamp."
+        }
+      },
+      "required": ["id", "name", "isSystemDefault", "permissions", "createdAt", "updatedAt"]
+    },
+    "AppUser": {
+      "title": "AppUser",
+      "description": "Registered user profile and assigned RBAC role stored in users_kkb/{uid}.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Full display name of user.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address.",
+          "minLength": 3,
+          "maxLength": 180
+        },
+        "roleId": {
+          "type": "string",
+          "description": "Assigned role document ID in roles_kkb.",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "roleName": {
+          "type": "string",
+          "description": "Cached display name of assigned role.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether account is active and allowed to log in."
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "description": "Last successful login display timestamp or empty string.",
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated last update timestamp."
+        }
+      },
+      "required": ["uid", "name", "email", "roleId", "roleName", "active", "createdAt", "updatedAt"]
+    },
+    "AuditLogEntry": {
+      "title": "AuditLogEntry",
+      "description": "Immutable per-user activity audit entry stored in audit_logs_kkb.",
+      "type": "object",
+      "properties": {
+        "actorUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the actor.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "actorName": {
+          "type": "string",
+          "description": "Display name of the actor.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "actorEmail": {
+          "type": "string",
+          "description": "Email of the actor.",
+          "minLength": 1,
+          "maxLength": 180
+        },
+        "actorRoleId": {
+          "type": "string",
+          "description": "Role ID at time of action.",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "actorRoleName": {
+          "type": "string",
+          "description": "Role name at time of action.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "action": {
+          "type": "string",
+          "description": "Action code (e.g. REVISE_PO, CREATE_PO, SEND_CLIENT_INV).",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "entityType": {
+          "type": "string",
+          "description": "Target entity type.",
+          "enum": ["PO", "CLIENT_INVOICE", "CLIENT_PO", "OPEX", "INVESTMENT", "USER", "ROLE", "REPORT", "AUTH"]
+        },
+        "entityId": {
+          "type": "string",
+          "description": "Target document ID if applicable.",
+          "maxLength": 128
+        },
+        "entityLabel": {
+          "type": "string",
+          "description": "Human readable identifier such as PO number or user name.",
+          "maxLength": 160
+        },
+        "summary": {
+          "type": "string",
+          "description": "Full Indonesian audit message.",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "timestampDisplay": {
+          "type": "string",
+          "description": "Formatted timestamp (e.g. 20 Nov 2026 18:18).",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "dateISO": {
+          "type": "string",
+          "description": "YYYY-MM-DD date string for filtering.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated creation timestamp."
+        }
+      },
+      "required": [
+        "actorUid",
+        "actorName",
+        "actorEmail",
+        "actorRoleId",
+        "actorRoleName",
+        "action",
+        "entityType",
+        "summary",
+        "timestampDisplay",
+        "dateISO",
+        "createdAt"
+      ]
+    },
+    "AppMetaBootstrap": {
+      "title": "AppMetaBootstrap",
+      "description": "Publicly readable non-PII marker indicating initial Super Admin setup is completed.",
+      "type": "object",
+      "properties": {
+        "initialized": {
+          "type": "boolean",
+          "description": "True once the first Super Admin and default roles are provisioned."
+        },
+        "adminUid": {
+          "type": "string",
+          "description": "UID of the initial bootstrapping Super Admin.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server-generated creation timestamp."
+        }
+      },
+      "required": ["initialized", "adminUid", "createdAt"]
+    },
+    "OpexItem": {
+      "title": "OpexItem",
+      "description": "Monthly operational expense entry stored in opex_items_kkb.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "enum": ["Gaji & SDM", "Utilitas & Kantor", "Pajak & Iuran", "Konsultan & Jasa", "Operasional Lainnya"] },
+        "amount": { "type": "number" },
+        "monthKey": { "type": "string", "minLength": 7, "maxLength": 7 },
+        "endMonthKey": { "type": "string", "minLength": 7, "maxLength": 7 },
+        "dueDay": { "type": "number" },
+        "sourceAccountId": { "type": "string", "maxLength": 64 },
+        "sourceAccountName": { "type": "string", "maxLength": 200 },
+        "isRecurring": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["Belum Bayar", "Sudah Bayar", "Lunas", "Pending", "Terlambat"] },
+        "monthStatuses": { "type": "object" },
+        "paidDates": { "type": "object" },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "category", "amount", "monthKey", "isRecurring", "status", "createdAt", "updatedAt"]
+    },
+    "InvestmentAsset": {
+      "title": "InvestmentAsset",
+      "description": "Asset / financing installment schedule with late fees and addendum history stored in investments_kkb.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "institution": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "enum": ["Pinjaman / Kredit", "Aset Tetap", "Investasi Modal", "Lainnya"] },
+        "principalAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["ANUITAS", "BALLOON"] },
+        "fixedPrincipalPerMonth": { "type": "number" },
+        "interestInputType": { "type": "string", "enum": ["RP", "PERCENT"] },
+        "monthlyInterestAmount": { "type": "number" },
+        "monthlyInterestRate": { "type": "number" },
+        "lateFeeInputType": { "type": "string", "enum": ["RP", "PERCENT"] },
+        "lateFeePerMonthAmount": { "type": "number" },
+        "lateFeePerMonthRate": { "type": "number" },
+        "bonusInputType": { "type": "string", "enum": ["RP", "PERCENT"] },
+        "bonusAmount": { "type": "number" },
+        "bonusRate": { "type": "number" },
+        "bonusDate": { "type": "string", "maxLength": 10 },
+        "monthlyInstallment": { "type": "number" },
+        "tenorMonths": { "type": "number" },
+        "startMonthKey": { "type": "string", "minLength": 7, "maxLength": 7 },
+        "startDate": { "type": "string", "maxLength": 10 },
+        "endDate": { "type": "string", "maxLength": 10 },
+        "dueDay": { "type": "number" },
+        "paidMonths": { "type": "array" },
+        "status": { "type": "string", "enum": ["Aktif", "Lunas", "Ditunda"] },
+        "notes": { "type": "string", "maxLength": 500 },
+        "originalContract": { "type": "object" },
+        "addendums": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "institution", "category", "principalAmount", "monthlyInstallment", "tenorMonths", "startMonthKey", "paidMonths", "status", "createdAt", "updatedAt"]
+    },
+    "ClientPurchaseOrder": {
+      "title": "ClientPurchaseOrder",
+      "description": "Purchase order received from client stored in client_po_kkb.",
+      "type": "object",
+      "properties": {
+        "clientPoNumber": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "poDate": { "type": "string", "minLength": 10, "maxLength": 10 },
+        "clientName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "brandName": { "type": "string", "maxLength": 200 },
+        "projectName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "projectNumber": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "amount": { "type": "number" },
+        "targetBillingDate": { "type": "string", "maxLength": 10 },
+        "status": { "type": "string", "enum": ["Draft PO", "PO Terkirim", "Sudah Ditagih", "Sudah Cair", "Aktif", "Sebagian Ditagih", "Selesai"] },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientPoNumber", "poDate", "clientName", "projectName", "projectNumber", "amount", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/po_kkb/{poId}": {
+      "schema": { "$ref": "#/entities/PurchaseOrder" },
+      "description": "Collection storing Purchase Orders (Cash Out) for PT. KREATIF KEBANGGAAN BANGSA."
+    },
+    "/client_invoices_kkb/{invoiceId}": {
+      "schema": { "$ref": "#/entities/ClientInvoice" },
+      "description": "Collection storing outgoing Client Invoices (Cash In)."
+    },
+    "/cashflow_settings_kkb/{settingId}": {
+      "schema": { "$ref": "#/entities/CashflowSettings" },
+      "description": "Collection storing global cashflow projection settings."
+    },
+    "/boss_report_months_kkb/{monthKey}": {
+      "schema": { "$ref": "#/entities/BossReportMonth" },
+      "description": "Collection storing monthly Excel-format Boss Report cashflow sheets."
+    },
+    "/roles_kkb/{roleId}": {
+      "schema": { "$ref": "#/entities/AppRole" },
+      "description": "Collection storing configurable RBAC roles and permissions."
+    },
+    "/users_kkb/{uid}": {
+      "schema": { "$ref": "#/entities/AppUser" },
+      "description": "Collection storing registered user profiles and assigned roles."
+    },
+    "/audit_logs_kkb/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLogEntry" },
+      "description": "Immutable collection storing per-user activity audit logs."
+    },
+    "/app_meta_kkb/{metaId}": {
+      "schema": { "$ref": "#/entities/AppMetaBootstrap" },
+      "description": "Non-PII workspace initialization marker."
+    },
+    "/opex_items_kkb/{opexId}": {
+      "schema": { "$ref": "#/entities/OpexItem" },
+      "description": "Collection storing monthly operational expense items."
+    },
+    "/investments_kkb/{invId}": {
+      "schema": { "$ref": "#/entities/InvestmentAsset" },
+      "description": "Collection storing investment assets, installment schedules, and addendum histories."
+    },
+    "/client_po_kkb/{cpoId}": {
+      "schema": { "$ref": "#/entities/ClientPurchaseOrder" },
+      "description": "Collection storing Purchase Orders received from clients."
+    }
+  }
+}

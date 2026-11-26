@@ -1,0 +1,689 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Shared Line Item Validator
+    function isValidLineItem(item) {
+      return item is map
+        && item.keys().hasAll(['description', 'quantity', 'unitPrice', 'amount'])
+        && item.keys().hasOnly(['description', 'quantity', 'unitPrice', 'amount'])
+        && item.description is string && item.description.size() >= 1 && item.description.size() <= 500
+        && (item.quantity is int || item.quantity is float) && item.quantity > 0
+        && (item.unitPrice is int || item.unitPrice is float) && item.unitPrice >= 0
+        && (item.amount is int || item.amount is float) && item.amount >= 0;
+    }
+
+    function isValidOptionalDate(val) {
+      return val is string && (val.size() == 0 || (val.size() == 10 && val.matches('^\\d{4}-\\d{2}-\\d{2}$')));
+    }
+
+    function isValidRevisionEntry(rev) {
+      return rev is map
+        && rev.keys().hasAll([
+          'id', 'revisedAt', 'revisedBy', 'reason',
+          'oldAmount', 'newAmount', 'diffAmount',
+          'oldInvoiceNumber', 'newInvoiceNumber', 'previousStatus', 'resolutionNote'
+        ])
+        && rev.keys().hasOnly([
+          'id', 'revisedAt', 'revisedBy', 'reason',
+          'oldAmount', 'newAmount', 'diffAmount',
+          'oldInvoiceNumber', 'newInvoiceNumber', 'previousStatus', 'resolutionNote'
+        ])
+        && rev.id is string && rev.id.size() >= 1 && rev.id.size() <= 64
+        && rev.revisedAt is string && rev.revisedAt.size() >= 10 && rev.revisedAt.size() <= 32
+        && rev.revisedBy is string && rev.revisedBy.size() >= 1 && rev.revisedBy.size() <= 160
+        && rev.reason is string && rev.reason.size() >= 1 && rev.reason.size() <= 500
+        && (rev.oldAmount is int || rev.oldAmount is float) && rev.oldAmount >= 0
+        && (rev.newAmount is int || rev.newAmount is float) && rev.newAmount >= 0
+        && (rev.diffAmount is int || rev.diffAmount is float)
+        && rev.oldInvoiceNumber is string && rev.oldInvoiceNumber.size() <= 64
+        && rev.newInvoiceNumber is string && rev.newInvoiceNumber.size() >= 1 && rev.newInvoiceNumber.size() <= 64
+        && rev.previousStatus is string && rev.previousStatus.size() >= 1 && rev.previousStatus.size() <= 32
+        && rev.resolutionNote is string && rev.resolutionNote.size() <= 300;
+    }
+
+    function isValidVoidedInvoice(v) {
+      return v is map
+        && v.keys().hasAll([
+          'id', 'invoiceNumber', 'invoiceDate', 'dueDate', 'totalAmount',
+          'items', 'statusLabel', 'replacedByInvoiceNumber', 'voidedAt', 'reason'
+        ])
+        && v.keys().hasOnly([
+          'id', 'invoiceNumber', 'invoiceDate', 'dueDate', 'totalAmount',
+          'items', 'statusLabel', 'replacedByInvoiceNumber', 'voidedAt', 'reason'
+        ])
+        && v.id is string && v.id.size() >= 1 && v.id.size() <= 64
+        && v.invoiceNumber is string && v.invoiceNumber.size() <= 64
+        && isValidOptionalDate(v.invoiceDate)
+        && isValidOptionalDate(v.dueDate)
+        && (v.totalAmount is int || v.totalAmount is float) && v.totalAmount >= 0
+        && v.items is list && v.items.size() >= 1 && v.items.size() <= 20
+        && isValidLineItem(v.items[0])
+        && v.statusLabel is string && v.statusLabel.size() >= 1 && v.statusLabel.size() <= 160
+        && v.replacedByInvoiceNumber is string && v.replacedByInvoiceNumber.size() >= 1 && v.replacedByInvoiceNumber.size() <= 64
+        && isValidOptionalDate(v.voidedAt)
+        && v.reason is string && v.reason.size() >= 1 && v.reason.size() <= 500;
+    }
+
+    // Entity Blueprint Validator for PurchaseOrder (Cash Out)
+    function isValidPurchaseOrder(data) {
+      return data.keys().hasAll([
+          'poNumber', 'poDate', 'vendorName', 'vendorAddress',
+          'projectName', 'projectNumber', 'deliveryDate', 'items',
+          'totalAmount', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'poNumber', 'poDate', 'vendorName', 'vendorAddress',
+          'projectName', 'projectNumber', 'deliveryDate', 'items',
+          'totalAmount', 'status', 'invoiceDate', 'invoiceNumber',
+          'invoiceFileUrl', 'invoiceFileName',
+          'paymentTermsMode', 'paymentTermsDays', 'manualDueDateNote', 'dueDate', 'note',
+          'revisionSubStatus', 'previousPaidAmount', 'revisions', 'voidedInvoices',
+          'isDeleted', 'deletedAt', 'deletedByName', 'deletedByEmail', 'deleteReason',
+          'createdAt', 'updatedAt'
+        ])
+        && data.poNumber is string && data.poNumber.size() >= 1 && data.poNumber.size() <= 64
+        && data.poDate is string && data.poDate.size() == 10 && data.poDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.vendorName is string && data.vendorName.size() >= 1 && data.vendorName.size() <= 200
+        && data.vendorAddress is string && data.vendorAddress.size() >= 1 && data.vendorAddress.size() <= 500
+        && data.projectName is string && data.projectName.size() >= 1 && data.projectName.size() <= 200
+        && data.projectNumber is string && data.projectNumber.size() >= 1 && data.projectNumber.size() <= 64
+        && data.deliveryDate is string && data.deliveryDate.size() == 10 && data.deliveryDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.items is list && data.items.size() >= 1 && data.items.size() <= 20
+        && isValidLineItem(data.items[0])
+        && (data.totalAmount is int || data.totalAmount is float) && data.totalAmount >= 0
+        && data.status in ['Draft', 'Sent', 'Invoiced', 'Paid']
+        && (!data.keys().hasAny(['invoiceDate']) || isValidOptionalDate(data.invoiceDate))
+        && (!data.keys().hasAny(['invoiceNumber']) || (data.invoiceNumber is string && data.invoiceNumber.size() <= 64))
+        && (!data.keys().hasAny(['invoiceFileUrl']) || (data.invoiceFileUrl is string && data.invoiceFileUrl.size() <= 1000))
+        && (!data.keys().hasAny(['invoiceFileName']) || (data.invoiceFileName is string && data.invoiceFileName.size() <= 200))
+        && (!data.keys().hasAny(['paymentTermsMode']) || data.paymentTermsMode in ['NET', 'MANUAL'])
+        && (!data.keys().hasAny(['paymentTermsDays']) || ((data.paymentTermsDays is int || data.paymentTermsDays is float) && data.paymentTermsDays >= 0 && data.paymentTermsDays <= 365))
+        && (!data.keys().hasAny(['manualDueDateNote']) || (data.manualDueDateNote is string && data.manualDueDateNote.size() <= 200))
+        && (!data.keys().hasAny(['dueDate']) || isValidOptionalDate(data.dueDate))
+        && (!data.keys().hasAny(['note']) || (data.note is string && data.note.size() <= 1000))
+        && (!data.keys().hasAny(['revisionSubStatus']) || data.revisionSubStatus in ['', 'Revisi', 'Menunggu Pembayaran Ulang', 'Menunggu Konfirmasi'])
+        && (!data.keys().hasAny(['previousPaidAmount']) || ((data.previousPaidAmount is int || data.previousPaidAmount is float) && data.previousPaidAmount >= 0))
+        && (!data.keys().hasAny(['revisions']) || (data.revisions is list && data.revisions.size() <= 50 && (data.revisions.size() == 0 || isValidRevisionEntry(data.revisions[0]))))
+        && (!data.keys().hasAny(['voidedInvoices']) || (data.voidedInvoices is list && data.voidedInvoices.size() <= 50 && (data.voidedInvoices.size() == 0 || isValidVoidedInvoice(data.voidedInvoices[0]))))
+        && (!data.keys().hasAny(['isDeleted']) || data.isDeleted is bool)
+        && (!data.keys().hasAny(['deletedAt']) || (data.deletedAt is string && data.deletedAt.size() <= 40))
+        && (!data.keys().hasAny(['deletedByName']) || (data.deletedByName is string && data.deletedByName.size() <= 160))
+        && (!data.keys().hasAny(['deletedByEmail']) || (data.deletedByEmail is string && data.deletedByEmail.size() <= 180))
+        && (!data.keys().hasAny(['deleteReason']) || (data.deleteReason is string && data.deleteReason.size() <= 300))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Entity Blueprint Validator for ClientInvoice (Cash In)
+    function isValidClientInvoice(data) {
+      return data.keys().hasAll([
+          'invoiceNumber', 'invoiceDate', 'clientName',
+          'projectName', 'projectNumber', 'items', 'totalAmount',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'invoiceNumber', 'invoiceDate', 'clientName',
+          'brandName', 'billingAddress', 'poNumber',
+          'grnNumber', 'showGRN', 'includePPN', 'subtotalAmount', 'ppnAmount',
+          'showSystemGeneratedNote',
+          'projectName', 'projectNumber', 'items', 'totalAmount',
+          'sentDate', 'paymentTermsMode', 'paymentTermsDays', 'manualDueDateNote',
+          'dueDate', 'status', 'paidDate', 'note',
+          'isVoided', 'voidStatusLabel', 'replacedByInvoiceId', 'replacedByInvoiceNumber',
+          'revisionSubStatus', 'previousPaidAmount', 'revisions',
+          'isDeleted', 'deletedAt', 'deletedByName', 'deletedByEmail', 'deleteReason',
+          'createdAt', 'updatedAt'
+        ])
+        && data.invoiceNumber is string && data.invoiceNumber.size() >= 1 && data.invoiceNumber.size() <= 64
+        && data.invoiceDate is string && data.invoiceDate.size() == 10 && data.invoiceDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 200
+        && (!data.keys().hasAny(['brandName']) || (data.brandName is string && data.brandName.size() <= 200))
+        && (!data.keys().hasAny(['billingAddress']) || (data.billingAddress is string && data.billingAddress.size() <= 500))
+        && (!data.keys().hasAny(['poNumber']) || (data.poNumber is string && data.poNumber.size() <= 64))
+        && (!data.keys().hasAny(['grnNumber']) || (data.grnNumber is string && data.grnNumber.size() <= 64))
+        && (!data.keys().hasAny(['showGRN']) || data.showGRN is bool)
+        && (!data.keys().hasAny(['includePPN']) || data.includePPN is bool)
+        && (!data.keys().hasAny(['subtotalAmount']) || ((data.subtotalAmount is int || data.subtotalAmount is float) && data.subtotalAmount >= 0))
+        && (!data.keys().hasAny(['ppnAmount']) || ((data.ppnAmount is int || data.ppnAmount is float) && data.ppnAmount >= 0))
+        && (!data.keys().hasAny(['showSystemGeneratedNote']) || data.showSystemGeneratedNote is bool)
+        && data.projectName is string && data.projectName.size() >= 1 && data.projectName.size() <= 200
+        && data.projectNumber is string && data.projectNumber.size() >= 1 && data.projectNumber.size() <= 64
+        && data.items is list && data.items.size() >= 1 && data.items.size() <= 20
+        && isValidLineItem(data.items[0])
+        && (data.totalAmount is int || data.totalAmount is float) && data.totalAmount >= 0
+        && (!data.keys().hasAny(['sentDate']) || isValidOptionalDate(data.sentDate))
+        && (!data.keys().hasAny(['paymentTermsMode']) || data.paymentTermsMode in ['NET', 'MANUAL'])
+        && (!data.keys().hasAny(['paymentTermsDays']) || ((data.paymentTermsDays is int || data.paymentTermsDays is float) && data.paymentTermsDays >= 0 && data.paymentTermsDays <= 365))
+        && (!data.keys().hasAny(['manualDueDateNote']) || (data.manualDueDateNote is string && data.manualDueDateNote.size() <= 200))
+        && (!data.keys().hasAny(['dueDate']) || isValidOptionalDate(data.dueDate))
+        && data.status in ['Draft', 'Unpaid', 'Paid']
+        && (!data.keys().hasAny(['paidDate']) || isValidOptionalDate(data.paidDate))
+        && (!data.keys().hasAny(['note']) || (data.note is string && data.note.size() <= 1000))
+        && (!data.keys().hasAny(['isVoided']) || data.isVoided is bool)
+        && (!data.keys().hasAny(['voidStatusLabel']) || (data.voidStatusLabel is string && data.voidStatusLabel.size() <= 160))
+        && (!data.keys().hasAny(['replacedByInvoiceId']) || (data.replacedByInvoiceId is string && data.replacedByInvoiceId.size() <= 128))
+        && (!data.keys().hasAny(['replacedByInvoiceNumber']) || (data.replacedByInvoiceNumber is string && data.replacedByInvoiceNumber.size() <= 64))
+        && (!data.keys().hasAny(['revisionSubStatus']) || data.revisionSubStatus in ['', 'Revisi', 'Menunggu Pembayaran Ulang', 'Menunggu Konfirmasi'])
+        && (!data.keys().hasAny(['previousPaidAmount']) || ((data.previousPaidAmount is int || data.previousPaidAmount is float) && data.previousPaidAmount >= 0))
+        && (!data.keys().hasAny(['revisions']) || (data.revisions is list && data.revisions.size() <= 50 && (data.revisions.size() == 0 || isValidRevisionEntry(data.revisions[0]))))
+        && (!data.keys().hasAny(['isDeleted']) || data.isDeleted is bool)
+        && (!data.keys().hasAny(['deletedAt']) || (data.deletedAt is string && data.deletedAt.size() <= 40))
+        && (!data.keys().hasAny(['deletedByName']) || (data.deletedByName is string && data.deletedByName.size() <= 160))
+        && (!data.keys().hasAny(['deletedByEmail']) || (data.deletedByEmail is string && data.deletedByEmail.size() <= 180))
+        && (!data.keys().hasAny(['deleteReason']) || (data.deleteReason is string && data.deleteReason.size() <= 300))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Entity Blueprint Validator for CashflowSettings
+    function isValidCashflowSettings(data) {
+      return data.keys().hasAll(['openingBankBalance', 'updatedAt'])
+        && data.keys().hasOnly(['openingBankBalance', 'updatedAt'])
+        && (data.openingBankBalance is int || data.openingBankBalance is float)
+        && data.openingBankBalance >= 0
+        && data.openingBankBalance <= 100000000000000
+        && data.updatedAt is timestamp;
+    }
+
+    // Validators for BossReportMonth nested maps
+    function isValidBossReportAccount(acc) {
+      return acc is map
+        && acc.keys().hasAll(['id', 'name', 'balance'])
+        && acc.keys().hasOnly(['id', 'name', 'balance', 'isPrimary'])
+        && acc.id is string && acc.id.size() >= 1 && acc.id.size() <= 64
+        && acc.name is string && acc.name.size() >= 1 && acc.name.size() <= 200
+        && (acc.balance is int || acc.balance is float)
+        && acc.balance >= -100000000000000 && acc.balance <= 100000000000000
+        && (!acc.keys().hasAny(['isPrimary']) || acc.isPrimary is bool);
+    }
+
+    function isValidBossReportItem(item) {
+      return item is map
+        && item.keys().hasAll(['id', 'name', 'amount', 'color'])
+        && item.keys().hasOnly(['id', 'name', 'amount', 'color', 'accountId', 'rescheduledToMonth'])
+        && item.id is string && item.id.size() >= 1 && item.id.size() <= 64
+        && item.name is string && item.name.size() >= 1 && item.name.size() <= 300
+        && (item.amount is int || item.amount is float)
+        && item.amount >= 0 && item.amount <= 100000000000000
+        && item.color in ['white', 'green', 'red']
+        && (!item.keys().hasAny(['accountId']) || (item.accountId is string && item.accountId.size() <= 64))
+        && (!item.keys().hasAny(['rescheduledToMonth']) || (item.rescheduledToMonth is string && item.rescheduledToMonth.size() == 7 && item.rescheduledToMonth.matches('^\\d{4}-\\d{2}$')));
+    }
+
+    function isValidBossReportOverride(ov) {
+      return ov is map
+        && ov.keys().hasAll([
+          'sourceId', 'hasCustomName', 'name',
+          'hasCustomAmount', 'amount', 'hasCustomColor', 'color'
+        ])
+        && ov.keys().hasOnly([
+          'sourceId', 'hasCustomName', 'name',
+          'hasCustomAmount', 'amount', 'hasCustomColor', 'color',
+          'rescheduledToMonth'
+        ])
+        && ov.sourceId is string && ov.sourceId.size() >= 1 && ov.sourceId.size() <= 128
+        && ov.hasCustomName is bool
+        && ov.name is string && ov.name.size() <= 300
+        && ov.hasCustomAmount is bool
+        && (ov.amount is int || ov.amount is float)
+        && ov.amount >= 0 && ov.amount <= 100000000000000
+        && ov.hasCustomColor is bool
+        && ov.color in ['white', 'green', 'red']
+        && (!ov.keys().hasAny(['rescheduledToMonth']) || (ov.rescheduledToMonth is string && ov.rescheduledToMonth.size() == 7 && ov.rescheduledToMonth.matches('^\\d{4}-\\d{2}$')));
+    }
+
+    function isValidBossReportRescheduledItem(rs) {
+      return rs is map
+        && rs.keys().hasAll([
+          'id', 'section', 'sourceCategory', 'sourceId',
+          'originMonthKey', 'fromMonthKey', 'historyMonths',
+          'name', 'amount', 'color'
+        ])
+        && rs.keys().hasOnly([
+          'id', 'section', 'sourceCategory', 'sourceId',
+          'originMonthKey', 'fromMonthKey', 'rescheduledFromMonth', 'historyMonths',
+          'name', 'amount', 'color', 'accountId', 'dueISO',
+          'rescheduledToMonth', 'investmentAssetId', 'investmentComponent',
+          'investmentInstallmentNumber', 'investmentInstallmentMonthKey',
+          'hasCustomOverride'
+        ])
+        && rs.id is string && rs.id.size() >= 1 && rs.id.size() <= 160
+        && rs.section in ['cashIn', 'operasional', 'investment', 'projectCost']
+        && rs.sourceCategory in ['clientInvoice', 'opex', 'investment', 'vendorPO', 'manual']
+        && rs.sourceId is string && rs.sourceId.size() >= 1 && rs.sourceId.size() <= 160
+        && rs.originMonthKey is string && rs.originMonthKey.size() == 7 && rs.originMonthKey.matches('^\\d{4}-\\d{2}$')
+        && rs.fromMonthKey is string && rs.fromMonthKey.size() == 7 && rs.fromMonthKey.matches('^\\d{4}-\\d{2}$')
+        && (!rs.keys().hasAny(['rescheduledFromMonth']) || (rs.rescheduledFromMonth is string && rs.rescheduledFromMonth.size() == 7 && rs.rescheduledFromMonth.matches('^\\d{4}-\\d{2}$')))
+        && rs.historyMonths is list && rs.historyMonths.size() >= 2 && rs.historyMonths.size() <= 36
+        && rs.name is string && rs.name.size() >= 1 && rs.name.size() <= 300
+        && (rs.amount is int || rs.amount is float)
+        && rs.amount >= 0 && rs.amount <= 100000000000000
+        && rs.color in ['white', 'green', 'red']
+        && (!rs.keys().hasAny(['accountId']) || (rs.accountId is string && rs.accountId.size() <= 64))
+        && (!rs.keys().hasAny(['dueISO']) || isValidOptionalDate(rs.dueISO))
+        && (!rs.keys().hasAny(['rescheduledToMonth']) || (rs.rescheduledToMonth is string && rs.rescheduledToMonth.size() == 7 && rs.rescheduledToMonth.matches('^\\d{4}-\\d{2}$')))
+        && (!rs.keys().hasAny(['investmentAssetId']) || (rs.investmentAssetId is string && rs.investmentAssetId.size() <= 64))
+        && (!rs.keys().hasAny(['investmentComponent']) || rs.investmentComponent in ['principal', 'interest', 'lateFee', 'bonus'])
+        && (!rs.keys().hasAny(['investmentInstallmentNumber']) || ((rs.investmentInstallmentNumber is int || rs.investmentInstallmentNumber is float) && rs.investmentInstallmentNumber >= 0 && rs.investmentInstallmentNumber <= 600))
+        && (!rs.keys().hasAny(['investmentInstallmentMonthKey']) || (rs.investmentInstallmentMonthKey is string && rs.investmentInstallmentMonthKey.size() == 7 && rs.investmentInstallmentMonthKey.matches('^\\d{4}-\\d{2}$')))
+        && (!rs.keys().hasAny(['hasCustomOverride']) || rs.hasCustomOverride is bool);
+    }
+
+    function isValidBossReportMonth(data, monthKey) {
+      return data.keys().hasAll([
+          'monthKey', 'asOfDate', 'accounts', 'cashInManual',
+          'operasional', 'investment', 'projectCostManual',
+          'autoOverrides', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'monthKey', 'asOfDate', 'accounts', 'manualOpeningBalance', 'cashInManual',
+          'operasional', 'investment', 'projectCostManual',
+          'autoOverrides', 'rescheduledIn', 'updatedAt'
+        ])
+        && data.monthKey is string && data.monthKey == monthKey
+        && data.monthKey.size() == 7 && data.monthKey.matches('^\\d{4}-\\d{2}$')
+        && data.asOfDate is string && data.asOfDate.size() == 10 && data.asOfDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.accounts is list && data.accounts.size() <= 50
+        && (data.accounts.size() == 0 || isValidBossReportAccount(data.accounts[0]))
+        && (!data.keys().hasAny(['manualOpeningBalance']) || ((data.manualOpeningBalance is int || data.manualOpeningBalance is float) && data.manualOpeningBalance >= -100000000000000 && data.manualOpeningBalance <= 100000000000000))
+        && data.cashInManual is list && data.cashInManual.size() <= 100
+        && (data.cashInManual.size() == 0 || isValidBossReportItem(data.cashInManual[0]))
+        && data.operasional is list && data.operasional.size() <= 100
+        && (data.operasional.size() == 0 || isValidBossReportItem(data.operasional[0]))
+        && data.investment is list && data.investment.size() <= 100
+        && (data.investment.size() == 0 || isValidBossReportItem(data.investment[0]))
+        && data.projectCostManual is list && data.projectCostManual.size() <= 100
+        && (data.projectCostManual.size() == 0 || isValidBossReportItem(data.projectCostManual[0]))
+        && data.autoOverrides is list && data.autoOverrides.size() <= 150
+        && (data.autoOverrides.size() == 0 || isValidBossReportOverride(data.autoOverrides[0]))
+        && (!data.keys().hasAny(['rescheduledIn']) || (data.rescheduledIn is list && data.rescheduledIn.size() <= 150 && (data.rescheduledIn.size() == 0 || isValidBossReportRescheduledItem(data.rescheduledIn[0]))))
+        && data.updatedAt is timestamp;
+    }
+
+    // Entity Blueprint Validator for OpexItem
+    function isValidOpexItem(data) {
+      return data.keys().hasAll([
+          'name', 'category', 'amount', 'monthKey',
+          'isRecurring', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'name', 'category', 'amount', 'monthKey', 'endMonthKey', 'dueDay',
+          'sourceAccountId', 'sourceAccountName',
+          'isRecurring', 'status', 'monthStatuses', 'paidDates', 'notes',
+          'createdAt', 'updatedAt'
+        ])
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 200
+        && data.category in [
+          'Gaji & SDM', 'Utilitas & Kantor', 'Pajak & Iuran',
+          'Konsultan & Jasa', 'Operasional Lainnya'
+        ]
+        && (data.amount is int || data.amount is float)
+        && data.amount >= 0 && data.amount <= 100000000000000
+        && data.monthKey is string && data.monthKey.size() == 7 && data.monthKey.matches('^\\d{4}-\\d{2}$')
+        && (!data.keys().hasAny(['endMonthKey']) || (data.endMonthKey is string && data.endMonthKey.size() == 7 && data.endMonthKey.matches('^\\d{4}-\\d{2}$')))
+        && (!data.keys().hasAny(['dueDay']) || ((data.dueDay is int || data.dueDay is float) && data.dueDay >= 1 && data.dueDay <= 31))
+        && (!data.keys().hasAny(['sourceAccountId']) || (data.sourceAccountId is string && data.sourceAccountId.size() <= 64))
+        && (!data.keys().hasAny(['sourceAccountName']) || (data.sourceAccountName is string && data.sourceAccountName.size() <= 200))
+        && data.isRecurring is bool
+        && data.status in ['Belum Bayar', 'Sudah Bayar', 'Lunas', 'Pending', 'Terlambat']
+        && (!data.keys().hasAny(['monthStatuses']) || data.monthStatuses is map)
+        && (!data.keys().hasAny(['paidDates']) || data.paidDates is map)
+        && (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInvestmentOriginalContract(c) {
+      return c is map
+        && c.keys().hasAll([
+          'principalAmount', 'paymentMethod', 'fixedPrincipalPerMonth',
+          'interestInputType', 'monthlyInterestAmount', 'monthlyInterestRate',
+          'lateFeeInputType', 'lateFeePerMonthAmount', 'lateFeePerMonthRate',
+          'bonusInputType', 'bonusAmount', 'bonusRate', 'bonusDate',
+          'tenorMonths', 'startMonthKey', 'startDate', 'endDate', 'notes'
+        ])
+        && c.keys().hasOnly([
+          'contractNumber', 'principalAmount', 'paymentMethod', 'fixedPrincipalPerMonth',
+          'interestInputType', 'monthlyInterestAmount', 'monthlyInterestRate',
+          'lateFeeInputType', 'lateFeePerMonthAmount', 'lateFeePerMonthRate',
+          'lateFeePerDayAmount', 'lateFeePerDayRate',
+          'bonusInputType', 'bonusAmount', 'bonusRate', 'bonusDate',
+          'tenorMonths', 'startMonthKey', 'startDate', 'endDate', 'dueDay', 'notes'
+        ])
+        && (!c.keys().hasAny(['contractNumber']) || (c.contractNumber is string && c.contractNumber.size() <= 80))
+        && (c.principalAmount is int || c.principalAmount is float) && c.principalAmount >= 0 && c.principalAmount <= 100000000000000
+        && c.paymentMethod in ['ANUITAS', 'BALLOON']
+        && (c.fixedPrincipalPerMonth is int || c.fixedPrincipalPerMonth is float) && c.fixedPrincipalPerMonth >= 0 && c.fixedPrincipalPerMonth <= 100000000000000
+        && c.interestInputType in ['RP', 'PERCENT']
+        && (c.monthlyInterestAmount is int || c.monthlyInterestAmount is float) && c.monthlyInterestAmount >= 0 && c.monthlyInterestAmount <= 100000000000000
+        && (c.monthlyInterestRate is int || c.monthlyInterestRate is float) && c.monthlyInterestRate >= 0 && c.monthlyInterestRate <= 100
+        && c.lateFeeInputType in ['RP', 'PERCENT']
+        && (c.lateFeePerMonthAmount is int || c.lateFeePerMonthAmount is float) && c.lateFeePerMonthAmount >= 0 && c.lateFeePerMonthAmount <= 100000000000000
+        && (c.lateFeePerMonthRate is int || c.lateFeePerMonthRate is float) && c.lateFeePerMonthRate >= 0 && c.lateFeePerMonthRate <= 100
+        && (!c.keys().hasAny(['lateFeePerDayAmount']) || ((c.lateFeePerDayAmount is int || c.lateFeePerDayAmount is float) && c.lateFeePerDayAmount >= 0 && c.lateFeePerDayAmount <= 100000000000000))
+        && (!c.keys().hasAny(['lateFeePerDayRate']) || ((c.lateFeePerDayRate is int || c.lateFeePerDayRate is float) && c.lateFeePerDayRate >= 0 && c.lateFeePerDayRate <= 100))
+        && c.bonusInputType in ['RP', 'PERCENT']
+        && (c.bonusAmount is int || c.bonusAmount is float) && c.bonusAmount >= 0 && c.bonusAmount <= 100000000000000
+        && (c.bonusRate is int || c.bonusRate is float) && c.bonusRate >= 0 && c.bonusRate <= 100
+        && isValidOptionalDate(c.bonusDate)
+        && (c.tenorMonths is int || c.tenorMonths is float) && c.tenorMonths >= 1 && c.tenorMonths <= 360
+        && c.startMonthKey is string && c.startMonthKey.size() == 7 && c.startMonthKey.matches('^\\d{4}-\\d{2}$')
+        && c.startDate is string && c.startDate.size() == 10 && c.startDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && c.endDate is string && c.endDate.size() == 10 && c.endDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && (!c.keys().hasAny(['dueDay']) || ((c.dueDay is int || c.dueDay is float) && c.dueDay >= 1 && c.dueDay <= 31))
+        && c.notes is string && c.notes.size() <= 500;
+    }
+
+    function isValidInvestmentAddendum(ad) {
+      return ad is map
+        && ad.keys().hasAll([
+          'id', 'sequenceNumber', 'addendumDate', 'addendumNumber',
+          'additionalTenorMonths', 'previousTenorMonths', 'newTotalTenorMonths',
+          'previousEndDate', 'newEndDate', 'additionalPrincipal', 'effectiveFromInstallment',
+          'newInterestInputType', 'newMonthlyInterestAmount', 'newMonthlyInterestRate',
+          'newLateFeeInputType', 'newLateFeePerMonthAmount', 'newLateFeePerMonthRate',
+          'newBonusInputType', 'newBonusAmount', 'newBonusRate', 'newBonusDate', 'notes'
+        ])
+        && ad.keys().hasOnly([
+          'id', 'sequenceNumber', 'addendumDate', 'addendumNumber',
+          'additionalTenorMonths', 'previousTenorMonths', 'newTotalTenorMonths',
+          'previousEndDate', 'newEndDate', 'additionalPrincipal', 'effectiveFromInstallment',
+          'newInterestInputType', 'newMonthlyInterestAmount', 'newMonthlyInterestRate',
+          'newMonthlyInstallment',
+          'newLateFeeInputType', 'newLateFeePerMonthAmount', 'newLateFeePerMonthRate',
+          'newLateFeePerDayAmount', 'newLateFeePerDayRate',
+          'newBonusInputType', 'newBonusAmount', 'newBonusRate', 'newBonusDate',
+          'notes', 'pdfFileName', 'pdfAttachmentId', 'createdAt'
+        ])
+        && ad.id is string && ad.id.size() >= 1 && ad.id.size() <= 64
+        && (ad.sequenceNumber is int || ad.sequenceNumber is float) && ad.sequenceNumber >= 1 && ad.sequenceNumber <= 100
+        && ad.addendumDate is string && ad.addendumDate.size() == 10 && ad.addendumDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && ad.addendumNumber is string && ad.addendumNumber.size() >= 1 && ad.addendumNumber.size() <= 80
+        && (ad.additionalTenorMonths is int || ad.additionalTenorMonths is float) && ad.additionalTenorMonths >= 1 && ad.additionalTenorMonths <= 360
+        && (ad.previousTenorMonths is int || ad.previousTenorMonths is float) && ad.previousTenorMonths >= 1 && ad.previousTenorMonths <= 360
+        && (ad.newTotalTenorMonths is int || ad.newTotalTenorMonths is float) && ad.newTotalTenorMonths >= 1 && ad.newTotalTenorMonths <= 360
+        && ad.previousEndDate is string && ad.previousEndDate.size() == 10 && ad.previousEndDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && ad.newEndDate is string && ad.newEndDate.size() == 10 && ad.newEndDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && (ad.additionalPrincipal is int || ad.additionalPrincipal is float) && ad.additionalPrincipal >= 0 && ad.additionalPrincipal <= 100000000000000
+        && (ad.effectiveFromInstallment is int || ad.effectiveFromInstallment is float) && ad.effectiveFromInstallment >= 1 && ad.effectiveFromInstallment <= 360
+        && ad.newInterestInputType in ['RP', 'PERCENT']
+        && (ad.newMonthlyInterestAmount is int || ad.newMonthlyInterestAmount is float) && ad.newMonthlyInterestAmount >= 0 && ad.newMonthlyInterestAmount <= 100000000000000
+        && (ad.newMonthlyInterestRate is int || ad.newMonthlyInterestRate is float) && ad.newMonthlyInterestRate >= 0 && ad.newMonthlyInterestRate <= 100
+        && (!ad.keys().hasAny(['newMonthlyInstallment']) || ((ad.newMonthlyInstallment is int || ad.newMonthlyInstallment is float) && ad.newMonthlyInstallment >= 0 && ad.newMonthlyInstallment <= 100000000000000))
+        && ad.newLateFeeInputType in ['RP', 'PERCENT']
+        && (ad.newLateFeePerMonthAmount is int || ad.newLateFeePerMonthAmount is float) && ad.newLateFeePerMonthAmount >= 0 && ad.newLateFeePerMonthAmount <= 100000000000000
+        && (ad.newLateFeePerMonthRate is int || ad.newLateFeePerMonthRate is float) && ad.newLateFeePerMonthRate >= 0 && ad.newLateFeePerMonthRate <= 100
+        && (!ad.keys().hasAny(['newLateFeePerDayAmount']) || ((ad.newLateFeePerDayAmount is int || ad.newLateFeePerDayAmount is float) && ad.newLateFeePerDayAmount >= 0 && ad.newLateFeePerDayAmount <= 100000000000000))
+        && (!ad.keys().hasAny(['newLateFeePerDayRate']) || ((ad.newLateFeePerDayRate is int || ad.newLateFeePerDayRate is float) && ad.newLateFeePerDayRate >= 0 && ad.newLateFeePerDayRate <= 100))
+        && ad.newBonusInputType in ['RP', 'PERCENT']
+        && (ad.newBonusAmount is int || ad.newBonusAmount is float) && ad.newBonusAmount >= 0 && ad.newBonusAmount <= 100000000000000
+        && (ad.newBonusRate is int || ad.newBonusRate is float) && ad.newBonusRate >= 0 && ad.newBonusRate <= 100
+        && isValidOptionalDate(ad.newBonusDate)
+        && ad.notes is string && ad.notes.size() <= 500
+        && (!ad.keys().hasAny(['pdfFileName']) || (ad.pdfFileName is string && ad.pdfFileName.size() <= 200))
+        && (!ad.keys().hasAny(['pdfAttachmentId']) || (ad.pdfAttachmentId is string && ad.pdfAttachmentId.size() <= 80))
+        && (!ad.keys().hasAny(['createdAt']) || (ad.createdAt is string && ad.createdAt.size() <= 40));
+    }
+
+    // Entity Blueprint Validator for InvestmentAsset
+    function isValidInvestmentAsset(data) {
+      return data.keys().hasAll([
+          'name', 'institution', 'category', 'principalAmount',
+          'monthlyInstallment', 'tenorMonths', 'startMonthKey',
+          'paidMonths', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'contractNumber', 'name', 'institution', 'category', 'principalAmount',
+          'paymentMethod', 'fixedPrincipalPerMonth', 'interestInputType',
+          'monthlyInterestAmount', 'monthlyInterestRate',
+          'lateFeeInputType', 'lateFeePerMonthAmount', 'lateFeePerMonthRate',
+          'lateFeePerDayAmount', 'lateFeePerDayRate',
+          'bonusInputType', 'bonusAmount', 'bonusRate', 'bonusDate',
+          'monthlyInstallment', 'tenorMonths', 'startMonthKey',
+          'startDate', 'endDate', 'dueDay',
+          'paidMonths', 'status', 'notes',
+          'originalContract', 'addendums',
+          'createdAt', 'updatedAt'
+        ])
+        && (!data.keys().hasAny(['contractNumber']) || (data.contractNumber is string && data.contractNumber.size() <= 80))
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 200
+        && data.institution is string && data.institution.size() >= 1 && data.institution.size() <= 200
+        && data.category in ['Pinjaman / Kredit', 'Aset Tetap', 'Investasi Modal', 'Lainnya']
+        && (data.principalAmount is int || data.principalAmount is float)
+        && data.principalAmount >= 0 && data.principalAmount <= 100000000000000
+        && (!data.keys().hasAny(['paymentMethod']) || data.paymentMethod in ['ANUITAS', 'BALLOON'])
+        && (!data.keys().hasAny(['fixedPrincipalPerMonth']) || ((data.fixedPrincipalPerMonth is int || data.fixedPrincipalPerMonth is float) && data.fixedPrincipalPerMonth >= 0 && data.fixedPrincipalPerMonth <= 100000000000000))
+        && (!data.keys().hasAny(['interestInputType']) || data.interestInputType in ['RP', 'PERCENT'])
+        && (!data.keys().hasAny(['monthlyInterestAmount']) || ((data.monthlyInterestAmount is int || data.monthlyInterestAmount is float) && data.monthlyInterestAmount >= 0 && data.monthlyInterestAmount <= 100000000000000))
+        && (!data.keys().hasAny(['monthlyInterestRate']) || ((data.monthlyInterestRate is int || data.monthlyInterestRate is float) && data.monthlyInterestRate >= 0 && data.monthlyInterestRate <= 100))
+        && (!data.keys().hasAny(['lateFeeInputType']) || data.lateFeeInputType in ['RP', 'PERCENT'])
+        && (!data.keys().hasAny(['lateFeePerMonthAmount']) || ((data.lateFeePerMonthAmount is int || data.lateFeePerMonthAmount is float) && data.lateFeePerMonthAmount >= 0 && data.lateFeePerMonthAmount <= 100000000000000))
+        && (!data.keys().hasAny(['lateFeePerMonthRate']) || ((data.lateFeePerMonthRate is int || data.lateFeePerMonthRate is float) && data.lateFeePerMonthRate >= 0 && data.lateFeePerMonthRate <= 100))
+        && (!data.keys().hasAny(['lateFeePerDayAmount']) || ((data.lateFeePerDayAmount is int || data.lateFeePerDayAmount is float) && data.lateFeePerDayAmount >= 0 && data.lateFeePerDayAmount <= 100000000000000))
+        && (!data.keys().hasAny(['lateFeePerDayRate']) || ((data.lateFeePerDayRate is int || data.lateFeePerDayRate is float) && data.lateFeePerDayRate >= 0 && data.lateFeePerDayRate <= 100))
+        && (!data.keys().hasAny(['bonusInputType']) || data.bonusInputType in ['RP', 'PERCENT'])
+        && (!data.keys().hasAny(['bonusAmount']) || ((data.bonusAmount is int || data.bonusAmount is float) && data.bonusAmount >= 0 && data.bonusAmount <= 100000000000000))
+        && (!data.keys().hasAny(['bonusRate']) || ((data.bonusRate is int || data.bonusRate is float) && data.bonusRate >= 0 && data.bonusRate <= 100))
+        && (!data.keys().hasAny(['bonusDate']) || isValidOptionalDate(data.bonusDate))
+        && (data.monthlyInstallment is int || data.monthlyInstallment is float)
+        && data.monthlyInstallment >= 0 && data.monthlyInstallment <= 100000000000000
+        && (data.tenorMonths is int || data.tenorMonths is float)
+        && data.tenorMonths >= 1 && data.tenorMonths <= 360
+        && data.startMonthKey is string && data.startMonthKey.size() == 7 && data.startMonthKey.matches('^\\d{4}-\\d{2}$')
+        && (!data.keys().hasAny(['startDate']) || isValidOptionalDate(data.startDate))
+        && (!data.keys().hasAny(['endDate']) || isValidOptionalDate(data.endDate))
+        && (!data.keys().hasAny(['dueDay']) || ((data.dueDay is int || data.dueDay is float) && data.dueDay >= 1 && data.dueDay <= 31))
+        && data.paidMonths is list && data.paidMonths.size() <= 360
+        && data.status in ['Aktif', 'Lunas', 'Ditunda']
+        && (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 500))
+        && (!data.keys().hasAny(['originalContract']) || isValidInvestmentOriginalContract(data.originalContract))
+        && (!data.keys().hasAny(['addendums']) || (data.addendums is list && data.addendums.size() <= 50 && (data.addendums.size() == 0 || isValidInvestmentAddendum(data.addendums[0]))))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Entity Blueprint Validator for ClientPurchaseOrder
+    function isValidClientPurchaseOrder(data) {
+      return data.keys().hasAll([
+          'clientPoNumber', 'poDate', 'clientName', 'projectName',
+          'projectNumber', 'amount', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'clientPoNumber', 'poDate', 'clientName', 'brandName',
+          'projectName', 'projectNumber', 'amount', 'targetBillingDate',
+          'status', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.clientPoNumber is string && data.clientPoNumber.size() >= 1 && data.clientPoNumber.size() <= 64
+        && data.poDate is string && data.poDate.size() == 10 && data.poDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 200
+        && (!data.keys().hasAny(['brandName']) || (data.brandName is string && data.brandName.size() <= 200))
+        && data.projectName is string && data.projectName.size() >= 1 && data.projectName.size() <= 200
+        && data.projectNumber is string && data.projectNumber.size() >= 1 && data.projectNumber.size() <= 64
+        && (data.amount is int || data.amount is float)
+        && data.amount >= 0 && data.amount <= 100000000000000
+        && (!data.keys().hasAny(['targetBillingDate']) || isValidOptionalDate(data.targetBillingDate))
+        && data.status in ['Draft PO', 'PO Terkirim', 'Sudah Ditagih', 'Sudah Cair', 'Aktif', 'Sebagian Ditagih', 'Selesai']
+        && (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Immutable Activity Audit Log
+    function isValidAuditLogEntry(data) {
+      return data.keys().hasAll([
+          'actorUid', 'actorName', 'actorEmail', 'actorRoleId', 'actorRoleName',
+          'action', 'entityType', 'summary', 'timestampDisplay', 'dateISO', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'actorUid', 'actorName', 'actorEmail', 'actorRoleId', 'actorRoleName',
+          'action', 'entityType', 'entityId', 'entityLabel',
+          'summary', 'timestampDisplay', 'dateISO', 'createdAt'
+        ])
+        && data.actorUid is string && data.actorUid.size() >= 1 && data.actorUid.size() <= 128
+        && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 120
+        && data.actorEmail is string && data.actorEmail.size() >= 1 && data.actorEmail.size() <= 180
+        && data.actorRoleId is string && data.actorRoleId.size() >= 1 && data.actorRoleId.size() <= 64
+        && data.actorRoleName is string && data.actorRoleName.size() >= 1 && data.actorRoleName.size() <= 80
+        && data.action is string && data.action.size() >= 1 && data.action.size() <= 64
+        && data.entityType in ['PO', 'CLIENT_INVOICE', 'CLIENT_PO', 'OPEX', 'INVESTMENT', 'USER', 'ROLE', 'REPORT', 'AUTH']
+        && (!data.keys().hasAny(['entityId']) || (data.entityId is string && data.entityId.size() <= 128))
+        && (!data.keys().hasAny(['entityLabel']) || (data.entityLabel is string && data.entityLabel.size() <= 160))
+        && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 600
+        && data.timestampDisplay is string && data.timestampDisplay.size() >= 1 && data.timestampDisplay.size() <= 40
+        && data.dateISO is string && data.dateISO.size() == 10 && data.dateISO.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.createdAt is timestamp;
+    }
+
+    // Immutable Activity Audit Log
+    match /audit_logs_kkb/{logId} {
+      allow get: if isValidId(logId);
+      allow list: if true;
+
+      allow create: if isValidId(logId)
+        && isValidAuditLogEntry(incoming())
+        && incoming().createdAt == request.time;
+
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /po_kkb/{poId} {
+      allow get: if isValidId(poId);
+      allow list: if true;
+
+      allow create: if isValidId(poId)
+        && isValidPurchaseOrder(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(poId)
+        && isValidPurchaseOrder(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isValidId(poId);
+    }
+
+    match /client_invoices_kkb/{invoiceId} {
+      allow get: if isValidId(invoiceId);
+      allow list: if true;
+
+      allow create: if isValidId(invoiceId)
+        && isValidClientInvoice(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(invoiceId)
+        && isValidClientInvoice(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isValidId(invoiceId);
+    }
+
+    match /cashflow_settings_kkb/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if true;
+
+      allow create: if isValidId(settingId)
+        && isValidCashflowSettings(incoming())
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(settingId)
+        && isValidCashflowSettings(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'openingBankBalance', 'updatedAt'
+        ]);
+    }
+
+    match /boss_report_months_kkb/{monthKey} {
+      allow get: if isValidId(monthKey);
+      allow list: if true;
+
+      allow create: if isValidId(monthKey)
+        && isValidBossReportMonth(incoming(), monthKey)
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(monthKey)
+        && isValidBossReportMonth(incoming(), monthKey)
+        && incoming().monthKey == existing().monthKey
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'asOfDate', 'accounts', 'manualOpeningBalance', 'cashInManual',
+          'operasional', 'investment', 'projectCostManual',
+          'autoOverrides', 'rescheduledIn', 'updatedAt'
+        ]);
+    }
+
+    match /opex_items_kkb/{opexId} {
+      allow get: if isValidId(opexId);
+      allow list: if true;
+
+      allow create: if isValidId(opexId)
+        && isValidOpexItem(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(opexId)
+        && isValidOpexItem(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isValidId(opexId);
+    }
+
+    match /investments_kkb/{invId} {
+      allow get: if isValidId(invId);
+      allow list: if true;
+
+      allow create: if isValidId(invId)
+        && isValidInvestmentAsset(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(invId)
+        && isValidInvestmentAsset(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isValidId(invId);
+    }
+
+    match /client_po_kkb/{cpoId} {
+      allow get: if isValidId(cpoId);
+      allow list: if true;
+
+      allow create: if isValidId(cpoId)
+        && isValidClientPurchaseOrder(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(cpoId)
+        && isValidClientPurchaseOrder(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isValidId(cpoId);
+    }
+  }
+}

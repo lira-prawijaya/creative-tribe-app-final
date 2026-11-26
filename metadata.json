@@ -1,0 +1,8 @@
+{
+  "name": " CFA - Ctribe Financial Administration",
+  "description": "Sistem Administrasi keuangan untuk PT. Kreatif Kebanggaan Bangsa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
